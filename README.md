@@ -1,7 +1,7 @@
 PFAS - final project
 ==============================
 
-A short description of the project.
+Final project for Perception for Autonomous Systems course at DTU. 
 
 Project Organization
 ------------
@@ -51,6 +51,26 @@ Project Organization
     │
     └── tox.ini            <- tox file with settings for running tox; see tox.readthedocs.io
 
+
+
+Data
+----
+
+Create the `./data/raw/` folder if it doesn't exist. Extract the project data into this file, so your folder structure is the following:
+
+```
+    ├── data
+    │   ├── external
+    │   ├── interim
+    │   ├── processed
+    │   └── raw 
+    │       ├── final_project
+    │       │   ├── calib
+    │       │   ├── seq_01
+    │       │   ├── seq_02
+    │       │   ├── seq_03
+    │       │   └── README.md
+```
 
 --------
 
