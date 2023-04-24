@@ -33,9 +33,15 @@ requirements_file:
 	@pipreqs --print >> requirements.txt
 
 ## Make Dataset
-data: requirements
+data:
 	$(PYTHON_INTERPRETER) src/data/make_dataset.py data/raw data/processed
 
+## Make Dataset
+count=5
+name="Kris"
+run_tracking:
+	$(PYTHON_INTERPRETER) src/tracking/run_tracking.py
+	
 ## Delete all compiled Python files
 clean:
 	find . -type f -name "*.py[co]" -delete
