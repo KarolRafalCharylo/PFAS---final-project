@@ -1,0 +1,5 @@
+train: data/processed/train/images
+val: data/processed/val/images
+
+nc: 3
+names: ['Pedestrian', 'Cyclist', 'Car']
