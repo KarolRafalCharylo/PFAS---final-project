@@ -1,5 +1,5 @@
-train: data/processed/train/images
-val: data/processed/val/images
+train: /home/dkenez/Projects/PFAS---final-project/data/processed/KITTI/images
+val: /home/dkenez/Projects/PFAS---final-project/data/processed/KITTI/images
 
 nc: 3
-names: ['Pedestrian', 'Cyclist', 'Car']
+names: ['Car', 'Pedestrian', 'Cyclist']
