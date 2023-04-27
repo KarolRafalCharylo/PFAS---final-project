@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from typing import Literal
 import click
 import logging
 from pathlib import Path
@@ -11,6 +12,10 @@ import seaborn as sns
 from pylab import rcParams
 import pandas as pd
 from skimage import io
+
+from sklearn.model_selection import train_test_split
+
+from rich import print
 
 import shutil
 
@@ -25,29 +30,70 @@ def create_dirs(out_path: Path):
     (data_dir / "processed").mkdir(parents=True, exist_ok=True)
 
     shutil.rmtree(out_path, ignore_errors=True)
-    (out_path / "images").mkdir(parents=True, exist_ok=True)
-    (out_path / "labels").mkdir(parents=True, exist_ok=True)
+    # (out_path / "images").mkdir(parents=True, exist_ok=True)
+    # (out_path / "labels").mkdir(parents=True, exist_ok=True)
+
+    # create dirs for yolo
+    (out_path / "train" / "images").mkdir(parents=True, exist_ok=True)
+    (out_path / "train" / "labels").mkdir(parents=True, exist_ok=True)
+    (out_path / "test" / "images").mkdir(parents=True, exist_ok=True)
+    (out_path / "test" / "labels").mkdir(parents=True, exist_ok=True)
+    (out_path / "val" / "images").mkdir(parents=True, exist_ok=True)
+    (out_path / "val" / "labels").mkdir(parents=True, exist_ok=True)
 
 
 def read_seq(
-    seq: str, src_path: Path, data_names: list[str], categories: list[str]
+    seq: str | list[str] | tuple[str],
+    src_path: Path,
+    data_names: list[str],
+    categories: list[str],
 ) -> pd.DataFrame:
-    df = pd.read_csv(
-        src_path / f"{seq}.txt", delimiter=" ", names=data_names, index_col=False
-    )
-    df = df[df["type"].isin(categories)]
-    df = df.drop(
-        columns=[
-            "truncated",
-            "occluded",
-            "alpha",
-            "dimension_width",
-            "dimension_height",
-            "dimension_length",
-            "rotation_y",
-        ]
-    )
-    df = df.reset_index(drop=True)
+    # check if seq is a list
+    if isinstance(seq, str):
+        df = pd.read_csv(
+            src_path / f"{seq}.txt", delimiter=" ", names=data_names, index_col=False
+        )
+        df = df[df["type"].isin(categories)]
+        df = df.drop(
+            columns=[
+                "truncated",
+                "occluded",
+                "alpha",
+                "dimension_width",
+                "dimension_height",
+                "dimension_length",
+                "rotation_y",
+            ]
+        )
+        df["sequence"] = seq
+        df = df.reset_index(drop=True)
+
+    else:
+        df = pd.DataFrame()
+        for s in seq:
+            df_temp = pd.read_csv(
+                src_path / f"{s}.txt",
+                delimiter=" ",
+                names=data_names,
+                index_col=False,
+            )
+            df_temp = df_temp[df_temp["type"].isin(categories)]
+            df_temp = df_temp.drop(
+                columns=[
+                    "truncated",
+                    "occluded",
+                    "alpha",
+                    "dimension_width",
+                    "dimension_height",
+                    "dimension_length",
+                    "rotation_y",
+                ]
+            )
+            df_temp["sequence"] = s
+            df_temp = df_temp.reset_index(drop=True)
+            # insert df_temp row into df
+            df = pd.concat([df, df_temp], ignore_index=True)
+
     return df
 
 
@@ -73,22 +119,24 @@ def format_yolo(
 def process_image(
     seq_df: pd.DataFrame,
     img_name: Path,
-    seq: str,
     categories: list[str],
     src_path_imgs: Path,
     out_path: Path,
+    split: Literal["train" , "test" , "val"],
 ):
+    seq = img_name.parent.stem
     save_name = f"{seq}_{img_name.stem}"
     img_path = src_path_imgs / seq / img_name
     img = io.imread(img_path)
 
     img_height = img.shape[0]
     img_width = img.shape[1]
-    io.imsave(out_path / "images" / f"{save_name}.jpeg", img)
+    io.imsave(out_path / split / "images" / f"{save_name}.jpeg", img)
 
     df_temp = seq_df[seq_df["frame"].isin([int(img_name.stem)])]
+    df_temp = df_temp[df_temp["sequence"].isin([seq])]
 
-    with (out_path / "labels" / f"{save_name}.txt").open(mode="w") as label_file:
+    with (out_path / split / "labels" / f"{save_name}.txt").open(mode="w") as label_file:
         for _, row in df_temp.iterrows():
             category_idx = categories.index(row["type"])
 
@@ -127,9 +175,11 @@ def main(seq: list[str], src_path_imgs: Path, src_path_labels: Path, out_path: P
     cleaned data ready to be analyzed (saved in ../processed).
     """
     logger = logging.getLogger(__name__)
-    logger.info("making final data set from raw data")
-    print(seq)
-
+    print()
+    print("[bold red]Making final data set from raw data[/bold red]")
+    print("[bold red]===================================[/bold red]")
+    print()
+    print(f"[bold white]Using sequences: {seq}[/bold white]")
 
     src_path_imgs = data_dir / Path(src_path_imgs)
     src_path_labels = data_dir / Path(src_path_labels)
@@ -158,15 +208,42 @@ def main(seq: list[str], src_path_imgs: Path, src_path_labels: Path, out_path: P
 
     categories = ["Car", "Pedestrian", "Cyclist"]
 
-    for sequence in tqdm(seq, position=0, desc="seq", leave=False, colour='green', ncols=80):
-        # print(sequence)
-        seq_df = read_seq(sequence, src_path_labels, data_names, categories)
-        img_names = (src_path_imgs / sequence).glob("*.png")
+    # create a list of all the image names in seq
+    img_names = []
+    for sequence in seq:
+        seq_img_names = (src_path_imgs / sequence).glob("*.png")
+        # prepend the sequence name to the image name using f-strings
+        img_names.extend(seq_img_names)
 
-        for img_name in tqdm(img_names, position=1, desc="img", leave=False, colour='red', ncols=80):
-            process_image(
-                seq_df, img_name, sequence, categories, src_path_imgs, out_path
-            )
+    # define train val test split percentages
+    train_split = 0.6
+    val_split = 0.2
+    test_split = 0.2
+
+    # split the image names into a train val test split using train_test_split
+    img_names_train, img_names_test = train_test_split(
+        img_names, test_size=test_split, random_state=42
+    )
+    img_names_train, img_names_val = train_test_split(
+        img_names_train,
+        test_size=val_split / (train_split + val_split),
+        random_state=42,
+    )
+
+    print(f"Total images: {len(img_names)}")
+    print(f"Number of train images: {len(img_names_train)}")
+    print(f"Number of val images: {len(img_names_val)}")
+    print(f"Number of test images: {len(img_names_test)}")
+
+    seq_df = read_seq(seq, src_path_labels, data_names, categories)
+
+    for split, img_names_split, progress_colour in zip(["train", "val", "test"], [img_names_train, img_names_val, img_names_test], ["green", "yellow", "white"]):
+        for img_name in tqdm(
+            img_names_split, position=1, desc=split, leave=False, colour=progress_colour, ncols=80
+        ):
+            process_image(seq_df, img_name, categories, src_path_imgs, out_path, split)
+
+    print()
 
 
 if __name__ == "__main__":
@@ -181,3 +258,4 @@ if __name__ == "__main__":
     load_dotenv(find_dotenv())
 
     main()
+
