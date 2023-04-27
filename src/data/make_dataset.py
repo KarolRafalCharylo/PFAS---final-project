@@ -15,6 +15,8 @@ from skimage import io
 
 from sklearn.model_selection import train_test_split
 
+from rich import print
+
 import shutil
 
 np.random.seed(42)
@@ -48,7 +50,6 @@ def read_seq(
 ) -> pd.DataFrame:
     # check if seq is a list
     if isinstance(seq, str):
-        print("seq is not a list")
         df = pd.read_csv(
             src_path / f"{seq}.txt", delimiter=" ", names=data_names, index_col=False
         )
@@ -68,7 +69,6 @@ def read_seq(
         df = df.reset_index(drop=True)
 
     else:
-        print("seq is a list")
         df = pd.DataFrame()
         for s in seq:
             df_temp = pd.read_csv(
@@ -134,6 +134,7 @@ def process_image(
     io.imsave(out_path / split / "images" / f"{save_name}.jpeg", img)
 
     df_temp = seq_df[seq_df["frame"].isin([int(img_name.stem)])]
+    df_temp = df_temp[df_temp["sequence"].isin([seq])]
 
     with (out_path / split / "labels" / f"{save_name}.txt").open(mode="w") as label_file:
         for _, row in df_temp.iterrows():
@@ -174,8 +175,11 @@ def main(seq: list[str], src_path_imgs: Path, src_path_labels: Path, out_path: P
     cleaned data ready to be analyzed (saved in ../processed).
     """
     logger = logging.getLogger(__name__)
-    print("Making final data set from raw data")
-    print(f"Using sequences: {seq}")
+    print()
+    print("[bold red]Making final data set from raw data[/bold red]")
+    print("[bold red]===================================[/bold red]")
+    print()
+    print(f"[bold white]Using sequences: {seq}[/bold white]")
 
     src_path_imgs = data_dir / Path(src_path_imgs)
     src_path_labels = data_dir / Path(src_path_labels)
@@ -226,17 +230,20 @@ def main(seq: list[str], src_path_imgs: Path, src_path_labels: Path, out_path: P
         random_state=42,
     )
 
+    print(f"Total images: {len(img_names)}")
     print(f"Number of train images: {len(img_names_train)}")
     print(f"Number of val images: {len(img_names_val)}")
     print(f"Number of test images: {len(img_names_test)}")
 
     seq_df = read_seq(seq, src_path_labels, data_names, categories)
 
-    for split, img_names_split in zip(["train", "val", "test"], [img_names_train, img_names_val, img_names_test]):
+    for split, img_names_split, progress_colour in zip(["train", "val", "test"], [img_names_train, img_names_val, img_names_test], ["green", "yellow", "white"]):
         for img_name in tqdm(
-            img_names_split, position=1, desc=split, leave=False, colour="red", ncols=80
+            img_names_split, position=1, desc=split, leave=False, colour=progress_colour, ncols=80
         ):
             process_image(seq_df, img_name, categories, src_path_imgs, out_path, split)
+
+    print()
 
 
 if __name__ == "__main__":
@@ -251,3 +258,4 @@ if __name__ == "__main__":
     load_dotenv(find_dotenv())
 
     main()
+
