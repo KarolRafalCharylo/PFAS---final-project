@@ -1,0 +1,5 @@
+train: /home/dkenez/Projects/PFAS---final-project/data/processed/KITTI/images
+val: /home/dkenez/Projects/PFAS---final-project/data/processed/KITTI/images
+
+nc: 3
+names: ['Car', 'Pedestrian', 'Cyclist']
