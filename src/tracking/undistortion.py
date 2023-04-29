@@ -57,7 +57,7 @@ def calibrate(calib_image_path: Path, calib_file_path: Path) -> None:
             ret, corners = cv2.findChessboardCorners(image_gray, (v,h))
     print(checkerboards_cnt, 'checkerboards was found on the image.')
     ret, mtx, dist, _, _ = cv2.calibrateCamera(objpoints, imgpoints, image_gray.shape[::-1], None, None)
-    assert ret, 'Undistortion parameters cannot be calculated.'
+    assert ret, 'Undistortion parameters could not be calculated.'
     save_parameters_to_json(mtx, dist, calib_file_path)
     print(str(calib_file_path), 'was created.')
 
