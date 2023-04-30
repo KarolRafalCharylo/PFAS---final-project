@@ -34,12 +34,12 @@ def create_dirs(out_path: Path):
     # (out_path / "labels").mkdir(parents=True, exist_ok=True)
 
     # create dirs for yolo
-    (out_path / "train" / "images").mkdir(parents=True, exist_ok=True)
-    (out_path / "train" / "labels").mkdir(parents=True, exist_ok=True)
-    (out_path / "test" / "images").mkdir(parents=True, exist_ok=True)
-    (out_path / "test" / "labels").mkdir(parents=True, exist_ok=True)
-    (out_path / "val" / "images").mkdir(parents=True, exist_ok=True)
-    (out_path / "val" / "labels").mkdir(parents=True, exist_ok=True)
+    (out_path / "images" / "train").mkdir(parents=True, exist_ok=True)
+    (out_path / "labels" / "train").mkdir(parents=True, exist_ok=True)
+    (out_path / "images" / "test").mkdir(parents=True, exist_ok=True)
+    (out_path / "labels" / "test").mkdir(parents=True, exist_ok=True)
+    (out_path / "images" / "val").mkdir(parents=True, exist_ok=True)
+    (out_path / "labels" / "val").mkdir(parents=True, exist_ok=True)
 
 
 def read_seq(
@@ -122,7 +122,7 @@ def process_image(
     categories: list[str],
     src_path_imgs: Path,
     out_path: Path,
-    split: Literal["train" , "test" , "val"],
+    split: Literal["train", "test", "val"],
 ):
     seq = img_name.parent.stem
     save_name = f"{seq}_{img_name.stem}"
@@ -131,12 +131,14 @@ def process_image(
 
     img_height = img.shape[0]
     img_width = img.shape[1]
-    io.imsave(out_path / split / "images" / f"{save_name}.jpeg", img)
+    io.imsave(out_path / "images" / split / f"{save_name}.jpeg", img)
 
     df_temp = seq_df[seq_df["frame"].isin([int(img_name.stem)])]
     df_temp = df_temp[df_temp["sequence"].isin([seq])]
 
-    with (out_path / split / "labels" / f"{save_name}.txt").open(mode="w") as label_file:
+    with (out_path / "labels" / split / f"{save_name}.txt").open(
+        mode="w"
+    ) as label_file:
         for _, row in df_temp.iterrows():
             category_idx = categories.index(row["type"])
 
@@ -154,7 +156,7 @@ def process_image(
 
 
 @click.command()
-@click.option("--seq", default=["0000"], help="Choose sequences.", multiple=True)
+@click.option("--seq", default=["all"], help="Choose sequences.", multiple=True)
 @click.option(
     "--src_path_imgs",
     default="raw/KITTI/data_tracking_image_2/training/label_02/",
@@ -174,6 +176,15 @@ def main(seq: list[str], src_path_imgs: Path, src_path_labels: Path, out_path: P
     """Runs data processing scripts to turn raw data from (../raw) into
     cleaned data ready to be analyzed (saved in ../processed).
     """
+
+    src_path_imgs = data_dir / Path(src_path_imgs)
+    src_path_labels = data_dir / Path(src_path_labels)
+    out_path = data_dir / Path(out_path)
+
+    if seq == ("all",):
+        # pathlib get directory names of all directories in src_path_imgs
+        seq = [x.stem for x in src_path_imgs.iterdir() if x.is_dir()]
+
     logger = logging.getLogger(__name__)
     print()
     print("[bold red]Making final data set from raw data[/bold red]")
@@ -181,9 +192,7 @@ def main(seq: list[str], src_path_imgs: Path, src_path_labels: Path, out_path: P
     print()
     print(f"[bold white]Using sequences: {seq}[/bold white]")
 
-    src_path_imgs = data_dir / Path(src_path_imgs)
-    src_path_labels = data_dir / Path(src_path_labels)
-    out_path = data_dir / Path(out_path)
+
     create_dirs(out_path)
 
     data_names = [
@@ -216,9 +225,9 @@ def main(seq: list[str], src_path_imgs: Path, src_path_labels: Path, out_path: P
         img_names.extend(seq_img_names)
 
     # define train val test split percentages
-    train_split = 0.6
-    val_split = 0.2
-    test_split = 0.2
+    train_split = 0.8
+    val_split = 0.18
+    test_split = 0.02
 
     # split the image names into a train val test split using train_test_split
     img_names_train, img_names_test = train_test_split(
@@ -237,9 +246,18 @@ def main(seq: list[str], src_path_imgs: Path, src_path_labels: Path, out_path: P
 
     seq_df = read_seq(seq, src_path_labels, data_names, categories)
 
-    for split, img_names_split, progress_colour in zip(["train", "val", "test"], [img_names_train, img_names_val, img_names_test], ["green", "yellow", "white"]):
+    for split, img_names_split, progress_colour in zip(
+        ["train", "val", "test"],
+        [img_names_train, img_names_val, img_names_test],
+        ["green", "yellow", "white"],
+    ):
         for img_name in tqdm(
-            img_names_split, position=1, desc=split, leave=False, colour=progress_colour, ncols=80
+            img_names_split,
+            position=1,
+            desc=split,
+            leave=False,
+            colour=progress_colour,
+            ncols=80,
         ):
             process_image(seq_df, img_name, categories, src_path_imgs, out_path, split)
 
@@ -258,4 +276,3 @@ if __name__ == "__main__":
     load_dotenv(find_dotenv())
 
     main()
-
