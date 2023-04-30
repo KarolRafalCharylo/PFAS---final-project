@@ -34,15 +34,16 @@ def run_tracking(seq, calib_file):
     model.eval()
     print("[bold blue]Model loaded[/bold blue]")
 
-    img = data_dir / "raw/final_project/seq_03/image_02/data/0000000000.png"  # or file, Path, PIL, OpenCV, numpy, list
+    img_left = data_dir / "raw/final_project/seq_03/image_02/data/0000000000.png"  # or file, Path, PIL, OpenCV, numpy, list
+    img_right = data_dir / "raw/final_project/seq_03/image_03/data/0000000000.png"  # or file, Path, PIL, OpenCV, numpy, list
 
     # Inference
-    results = model(img)
+    results = model(img_left)
 
     # Results
     r = results.pandas().xyxy
 
-    frame = io.imread(img)
+    frame = io.imread(img_right)
     for _, box in r[0].iterrows():
         if box["class"]==0:
             xB = int(box["xmin"])
