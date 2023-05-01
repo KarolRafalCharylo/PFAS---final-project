@@ -5,6 +5,18 @@ from pathlib import Path
 import click
 import json
 
+
+
+def save_parameters_to_json(mtx, dist, calib_file_path) -> None:
+    data_dict = {'mtx': mtx.tolist(), 'dist': dist.tolist()}
+    with open(calib_file_path, 'w') as output_file:
+        json.dump(data_dict, output_file)
+
+def load_parameters_from_json(calib_file_path):
+    with open(calib_file_path, 'r') as input_file:
+        data_dict = json.load(input_file)
+    return np.asarray(data_dict['mtx']), np.asarray(data_dict['dist'])
+
 @click.command()
 @click.option(
     '--calib_image_path',
@@ -20,17 +32,6 @@ import json
     help='Chose the path and name of the json file where to put the calibration data from the undistortion calibration!',
     type=click.Path()
 )
-
-def save_parameters_to_json(mtx, dist, calib_file_path) -> None:
-    data_dict = {'mtx': mtx.tolist(), 'dist': dist.tolist()}
-    with open(calib_file_path, 'w') as output_file:
-        json.dump(data_dict, output_file)
-
-def load_parameters_from_json(calib_file_path):
-    with open(calib_file_path, 'r') as input_file:
-        data_dict = json.load(input_file)
-    return np.asarray(data_dict['mtx']), np.asarray(data_dict['dist'])
-
 def calibrate(calib_image_path: Path, calib_file_path: Path) -> None:
     assert str(calib_file_path)[-5:] == '.json', 'Calibration output path has to be a json file.'
     if not os.path.isdir(os.path.split(calib_file_path)[0]):
