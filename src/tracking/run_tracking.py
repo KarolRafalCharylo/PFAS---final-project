@@ -7,7 +7,7 @@ from pathlib import Path
 from skimage import io
 import pandas as pd
 import uuid
-from src.tracking.position_calculation import position_calculation
+from src.tracking.position_calculation import triangulation
 
 from src.tracking.stereo_object_matching import draw_matching_bbox, match_objects
 from src.tracking.f2f_object_matching import match_objects_f2f
@@ -121,7 +121,7 @@ def run_tracking(seq: Path):
             box_right = results_right_df.iloc[idx_right]
 
             # calculate position (uses triangulation)
-            x, y, z = position_calculation(
+            x, y, z = triangulation(
                 box_left["xcenter"],
                 box_left["ycenter"],
                 box_right["xcenter"],
