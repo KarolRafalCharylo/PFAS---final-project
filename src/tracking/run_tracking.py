@@ -6,9 +6,11 @@ import torch
 from pathlib import Path
 from skimage import io
 import pandas as pd
+import uuid
 from src.tracking.position_calculation import position_calculation
 
 from src.tracking.stereo_object_matching import draw_matching_bbox, match_objects
+from src.tracking.f2f_object_matching import match_objects_f2f
 
 root_dir = Path(__file__).resolve().parents[2]
 data_dir = root_dir / "data"
@@ -71,8 +73,12 @@ def run_tracking(seq: Path):
         "bbox_h",
     ]
     objects_df = pd.DataFrame(columns=object_columns)
-    for frame, (img_left_path, img_right_path) in enumerate(zip(glob_left, glob_right)):
-        print(f"[bold white]Processing frame [bold blue]{frame}[/bold blue]: [bold blue]{img_left_path.name}[/bold blue][/bold white]")
+    zipped_img_list = zip(glob_left, glob_right)
+
+    for frame, (img_left_path, img_right_path) in enumerate(zipped_img_list):
+        print(
+            f"[bold white]Processing frame [bold blue]{frame}[/bold blue]: [bold blue]{img_left_path.name}[/bold blue][/bold white]"
+        )
 
         # img_left_path = (
         #     data_dir / "raw/final_project_2023_rect/seq_03/image_02/data/0000000000.png"
@@ -122,8 +128,14 @@ def run_tracking(seq: Path):
                 box_right["ycenter"],
             )
 
-            
-            obj_id = np.random.randint(20)
+            # determine id
+            # if first frame, create new id
+            # else, try to match from previous frame
+            if frame == 0:
+                obj_id = uuid.uuid4()
+            else:
+                obj_id = None
+
             new_row_df = pd.DataFrame(
                 [
                     [
@@ -133,7 +145,7 @@ def run_tracking(seq: Path):
                         x,
                         y,
                         z,
-                        0,
+                        frame,
                         box_left["xcenter"],
                         box_left["ycenter"],
                         box_left["width"],
@@ -143,7 +155,71 @@ def run_tracking(seq: Path):
                 columns=object_columns,
             )
             objects_df = pd.concat([objects_df, new_row_df], ignore_index=True)
-            pass
+
+        if frame == 0:
+            continue
+
+        img_latest = img_left
+
+        for prev_frame_i in range(1, frame + 1):
+            prev_frame = frame - prev_frame_i
+
+            # get all rows from the latest frame
+            latest_frame_df = objects_df[objects_df["frame"] == frame]
+
+            latest_frame_with_no_uuid_df = latest_frame_df[
+                latest_frame_df["object_id"].isnull()
+            ]
+            # print(f"{len(latest_frame_with_no_uuid_df)=}")
+            if len(latest_frame_with_no_uuid_df) == 0:
+                break
+
+            # get all rows from the previous frame
+            prev_frame_df = objects_df[objects_df["frame"] == prev_frame]
+
+            # get previous frame image
+            # img_latest = io.imread(glob_left[frame])
+            img_prev = io.imread(glob_left[prev_frame])
+
+            # print(f"{frame=}")
+            # print(f"{prev_frame=}")
+            # print(f"{glob_left[frame]=}")
+            # print(f"{glob_left[prev_frame]=}")
+            # io.imsave("test_latest.png", img_latest)
+            # io.imsave("test_prev.png", img_prev)
+
+            # match ovjects from previous frame to latest frame
+            row_ind, col_ind = match_objects_f2f(
+                latest_frame_df, prev_frame_df, img_latest, img_prev
+            )
+
+            # print(row_ind, col_ind)
+            for idx_latest, idx_prev in zip(row_ind, col_ind):
+                # print(f"{objects_df.loc[idx_latest, 'object_id']=}")
+                # print(f"{prev_frame_df.loc[idx_prev, 'object_id']=}")
+
+                id_to_set = prev_frame_df.loc[idx_prev, "object_id"].values[0]
+                # check if id_to_set exist in the latest frame
+                if id_to_set in latest_frame_df["object_id"].values:
+                    continue
+
+                objects_df.loc[idx_latest, "object_id"] = prev_frame_df.loc[
+                    idx_prev, "object_id"
+                ].values[0]
+            # for idx_latest, idx_prev in zip(row_ind, col_ind):
+            #     print(f"{objects_df.loc[idx_latest, 'object_id']=}")
+            #     print(f"{prev_frame_df.loc[idx_prev, 'object_id']=}")
+        else:
+            latest_frame_df = objects_df[objects_df["frame"] == frame]
+            latest_frame_with_no_uuid_df = latest_frame_df[
+                latest_frame_df["object_id"].isnull()
+            ]
+            if len(latest_frame_with_no_uuid_df) > 0:
+                for idx_latest in latest_frame_with_no_uuid_df.index:
+                    objects_df.loc[idx_latest, "object_id"] = uuid.uuid4()
+
+        print("took", prev_frame_i, "frames to match all objects")
+
         objects_df.to_csv("test.csv")
 
 
