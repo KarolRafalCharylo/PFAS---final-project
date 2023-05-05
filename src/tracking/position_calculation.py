@@ -27,9 +27,9 @@ def position_calculation(
     v_avg = (vl + vr) / 2
 
     # Calculate position wrt Cam 2 (left) frame
-    z_cam = b * fx / (ur - ul)
-    x_cam = z_cam * (ul - ox) / fx
-    y_cam = z_cam * (v_avg - oy) / fy
+    z_cam = b * (-fx) / (ur - ul)
+    x_cam = z_cam * (ul - ox) / (-fx)
+    y_cam = z_cam * (v_avg - oy) / (-fy)
     obj_cam = np.array([x_cam, y_cam, z_cam, 1])
 
     # Tranformation matrix between Cam 2 (left) and Car frames
@@ -42,3 +42,31 @@ def position_calculation(
         return obj_cam[0:3]
     elif frame == "car":
         return obj_car[0:3]
+    
+
+def bbox_center(bbox):
+    """
+    Calculate the pixel coordinates of center of a bounding box
+    """
+    u = bbox[0] + (bbox[2]-bbox[0])/2
+    v = bbox[1] + (bbox[3]-bbox[1])/2
+    return u, v
+
+
+
+bboxes1 = np.array([[0,201.514206,297.433075,370],
+                    [1000.916809,151.643967,1076.956909,295.646484],
+                    [446.264679,172.997131,483.641022,198.633377],
+                    [867.967407,167.970062,917.901123,276.058960]])
+bboxes2 = np.array([[0,195.325424,233.257751,367.463257],
+                    [958.674683,145.034378,1032.881836,297.623138],
+                    [438.047150,173.084274,475.409637,199.053802],
+                    [788.372253,153.427689,893.130249,277.143463]])
+
+
+
+for bbox1, bbox2 in zip(bboxes1, bboxes2):
+    ul, vl = bbox_center(bbox1)
+    ur, vr = bbox_center(bbox2)
+    print(position_calculation(ul, vl, ur, vr))
+
