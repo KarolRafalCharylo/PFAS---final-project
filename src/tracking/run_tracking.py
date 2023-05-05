@@ -81,10 +81,9 @@ def run_tracking(seq: Path):
         #     data_dir / "raw/final_project_2023_rect/seq_03/image_03/data/0000000000.png"
         # )  # or file, Path, PIL, OpenCV, numpy, list
 
+        # read images
         img_left = io.imread(img_left_path)
         img_right = io.imread(img_right_path)
-
-
 
         # Inference
         results = model([img_left, img_right])
@@ -93,30 +92,37 @@ def run_tracking(seq: Path):
         r_xyxy = results.pandas().xyxy
         r_xywh = results.pandas().xywh
 
+        # results in bottom left corner, top right corner format
         results_left_df = r_xyxy[0]
         results_right_df = r_xyxy[1]
 
+        # match objects
         row_ind, col_ind = match_objects(
             results_left_df, results_right_df, img_left, img_right
         )
 
-        draw_matching_bbox(
-            results_left_df, results_right_df, img_left, img_right, row_ind, col_ind
-        )
+        # draw_matching_bbox(
+        #     results_left_df, results_right_df, img_left, img_right, row_ind, col_ind
+        # )
 
+        # results in center, width, height format
         results_left_df = r_xywh[0]
         results_right_df = r_xywh[1]
 
+        # create new row for each matched object
         for idx_left, idx_right in zip(row_ind, col_ind):
             box_left = results_left_df.iloc[idx_left]
             box_right = results_right_df.iloc[idx_right]
 
+            # calculate position (uses triangulation)
             x, y, z = position_calculation(
                 box_left["xcenter"],
                 box_left["ycenter"],
                 box_right["xcenter"],
                 box_right["ycenter"],
             )
+
+            
             obj_id = np.random.randint(20)
             new_row_df = pd.DataFrame(
                 [

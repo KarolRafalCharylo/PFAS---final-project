@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 
 
-def match_objects(
+def match_objects_f2f(
     results_left_df: pd.DataFrame,
     results_right_df: pd.DataFrame,
     img_left: np.ndarray,
