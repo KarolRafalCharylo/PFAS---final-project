@@ -11,7 +11,7 @@ from src.tracking.position_calculation import triangulation, project_3d_to_2d_le
 
 from src.tracking.stereo_object_matching import draw_matching_bbox, match_objects
 from src.tracking.f2f_object_matching import match_objects_f2f
-from src.tracking.kalman_filter import KalmanFilter
+from src.tracking.kalman_filter import KalmanFilter, KalmanFilterNew
 
 
 root_dir = Path(__file__).resolve().parents[2]
@@ -168,10 +168,9 @@ def run_tracking(seq: Path):
             objects_df = pd.concat([objects_df, new_row_df], ignore_index=True)
 
         if frame > 0:
-
             img_latest = img_left
 
-            for prev_frame_i in range(1, frame + 1):
+            for prev_frame_i in range(1, min(frame + 1, 100)):
                 prev_frame = frame - prev_frame_i
 
                 # get all rows from the latest frame
@@ -186,8 +185,9 @@ def run_tracking(seq: Path):
 
                 # get all rows from the previous frame (that were observed)
                 prev_frame_df = objects_df[
-                    (objects_df["frame"] == prev_frame) & (objects_df["observed"] == True)
-                    ]
+                    (objects_df["frame"] == prev_frame)
+                    & (objects_df["observed"] == True)
+                ]
 
                 # get previous frame image
                 # img_latest = io.imread(glob_left[frame])
@@ -232,40 +232,48 @@ def run_tracking(seq: Path):
 
             print("took", prev_frame_i, "frames to match all objects")
 
-
         # Position prediciton using Kalman filter
 
         # Find objects in current frame and previous frame
         df_current_frame = objects_df[objects_df["frame"] == frame]
-        df_previous_frame = objects_df[objects_df["frame"] == frame-1]
-        
+        df_previous_frame = objects_df[objects_df["frame"] == frame - 1]
 
         # For observed objects, update the kalman filter instance and predict the next position
         for _, row in df_current_frame.iterrows():
             x = row["position_x"]
             y = row["position_y"]
             z = row["position_z"]
+            cx = row["bbox_cx"]
+            cy = row["bbox_cy"]
             object_id = row["object_id"]
+
+            # create a 9 column vector from the xyz position
+            # x_measured = np.array([[x],[y],[z]])
 
             if object_id in kf_dict.keys():
                 kalman_filter = kf_dict[object_id]
-            else: 
-                kalman_filter = KalmanFilter()
+            else:
+                kalman_filter = KalmanFilterNew(cx, cy)
                 kf_dict[object_id] = kalman_filter
-            
-            kalman_filter.update(np.array([x,y,z]))
+
+            # kalman_filter.update(x_measured)
 
             ### Predict the next state
-            kalman_filter.predict()
+            prediction = kalman_filter.predict(cx, cy)
 
             # Add predicted position to the dataframe
-            pred_x = kf_dict[object_id].x[0][0]
-            pred_y = kf_dict[object_id].x[0][1]
-            pred_z = kf_dict[object_id].x[0][2]
-            objects_df.loc[objects_df["object_id"] == object_id, "prediction_x"] = pred_x
-            objects_df.loc[objects_df["object_id"] == object_id, "prediction_y"] = pred_y
-            objects_df.loc[objects_df["object_id"] == object_id, "prediction_z"] = pred_z
-            
+            pred_x = prediction[0, 0]
+            pred_y = prediction[1, 0]
+            # pred_z = kf_dict[object_id].x[2][0]
+            objects_df.loc[
+                (objects_df["object_id"] == object_id) & (objects_df["frame"] == frame),
+                "prediction_x",
+            ] = pred_x
+            objects_df.loc[
+                (objects_df["object_id"] == object_id) & (objects_df["frame"] == frame),
+                "prediction_y",
+            ] = pred_y
+            # objects_df.loc[(objects_df["object_id"] == object_id) & (objects_df["frame"] == frame), "prediction_z"] = pred_z
 
         # For non-observed objects,
         # find object ids that are not in the current frame but are in the previous frame
@@ -273,33 +281,52 @@ def run_tracking(seq: Path):
         object_ids_current_frame = df_current_frame["object_id"].unique()
         object_ids_non_observed = np.setdiff1d(
             object_ids_previous_frame, object_ids_current_frame
-            )
+        )
 
         # predict the next position and use previous predicted position as current position
         rows_to_add = []
         for object_id in object_ids_non_observed:
-            
+            assert (
+                object_id in kf_dict.keys()
+            ), f"Kalman filter does not exist for object ID: {object_id}"
             kalman_filter = kf_dict[object_id]
 
-            est_x = kalman_filter.x[0][0]
-            est_y = kalman_filter.x[0][1]
-            est_z = kalman_filter.x[0][2]
-            kalman_filter.predict()
+            # TODO: check if this is correct, do we need to update the kalman filter with the previous predicted position?
+            # est_x = kalman_filter.x[0][0]
+            # est_y = kalman_filter.x[1][0]
+            # est_z = kalman_filter.x[2][0]
+            # x_measured = np.array([[est_x],[est_y],[est_z]])
+            # kalman_filter.update(x_measured)
+            est_x = df_previous_frame.loc[
+                df_previous_frame["object_id"] == object_id, "prediction_x"
+            ].values[0]
+            est_y = df_previous_frame.loc[
+                df_previous_frame["object_id"] == object_id, "prediction_y"
+            ].values[0]
 
-            bbox_cx, bbox_cy = project_3d_to_2d_left([est_x, est_y, est_z])
+            prediction = kalman_filter.predict(est_x, est_y)
+            # kalman_filter.predict()
+
+            # bbox_cx, bbox_cy = project_3d_to_2d_left([est_x, est_y, est_z])
 
             # predicted position
-            pred_x = kf_dict[object_id].x[0][0]
-            pred_y = kf_dict[object_id].x[0][1]
-            pred_z = kf_dict[object_id].x[0][2]
+            pred_x = prediction[0, 0]
+            pred_y = prediction[1, 0]
+            # pred_z = kf_dict[object_id].x[2][0]
 
             # Get object type, last seen, bbox width and bbox height from last frame it was observed
-            object_type = df_previous_frame[df_previous_frame["object_id"] == object_id]["object_type"].values[0]
-            last_seen = df_previous_frame[df_previous_frame["object_id"] == object_id]["last_seen"].values[0]
-            bbox_w = df_previous_frame[df_previous_frame["object_id"] == object_id]["bbox_w"].values[0]
-            bbox_h = df_previous_frame[df_previous_frame["object_id"] == object_id]["bbox_h"].values[0]
-
-            
+            object_type = df_previous_frame[
+                df_previous_frame["object_id"] == object_id
+            ]["object_type"].values[0]
+            last_seen = df_previous_frame[df_previous_frame["object_id"] == object_id][
+                "last_seen"
+            ].values[0]
+            bbox_w = df_previous_frame[df_previous_frame["object_id"] == object_id][
+                "bbox_w"
+            ].values[0]
+            bbox_h = df_previous_frame[df_previous_frame["object_id"] == object_id][
+                "bbox_h"
+            ].values[0]
 
             # Make new row for non-observed object in dataframe
             row = [
@@ -307,24 +334,25 @@ def run_tracking(seq: Path):
                 object_id,
                 object_type,
                 False,
-                est_x,
-                est_y,
-                est_z,
+                0,
+                0,
+                0,
                 pred_x,
                 pred_y,
-                pred_z,
+                0,
                 last_seen,
-                bbox_cx,
-                bbox_cy,
+                est_x,
+                est_y,
                 bbox_w,
-                bbox_h
+                bbox_h,
             ]
             rows_to_add.append(row)
-        
-        objects_df = pd.concat([objects_df, pd.DataFrame(rows_to_add, columns=object_columns)], ignore_index=True)
-        objects_df.to_csv("test.csv")
 
-
+        objects_df = pd.concat(
+            [objects_df, pd.DataFrame(rows_to_add, columns=object_columns)],
+            ignore_index=True,
+        )
+    objects_df.to_csv("test.csv")
 
 
 if __name__ == "__main__":

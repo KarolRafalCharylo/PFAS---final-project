@@ -1,51 +1,54 @@
+import cv2
 import numpy as np
 import pandas as pd
 from src.tracking.position_calculation import project_3d_to_2d_left
 
+
+class KalmanFilterNew():
+
+    def __init__(self, coordX, coordY):
+        self.kf = cv2.KalmanFilter(4, 2)
+        self.kf.measurementMatrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], np.float32)
+        self.kf.transitionMatrix = np.array([[1, 0, 1, 0], [0, 1, 0, 1],
+                                        [0, 0, 1, 0], [0, 0, 0, 1]], np.float32)
+        
+        # print(self.kf.statePre)
+        self.kf.statePre = np.array([[coordX], [coordY], [0], [0]], np.float32)
+    
+    
+    def predict(self, coordX, coordY):
+        measured = np.array([[coordX], [coordY]], np.float32)
+        self.kf.correct(measured)
+        predicted = self.kf.predict()
+        return predicted
+    
+    
 class KalmanFilter:
-    def __init__(self):
-        self.x = np.array([[0],
-              [0],
-              [0],
-              [0],
-              [0],
-              [0],
-              [0],
-              [0],
-              [0]])
+    # generate docstring
+    """
+    Kalman filter implementation for 3D object tracking
+    Implemented from https://github.com/balzer82/Kalman/blob/master/Kalman-Filter-CA-Ball.ipynb
+    """
+    def __init__(self, x0):
+        self.dt = 1/30 # time step
+        self.x = x0
 
         # The initial uncertainty (9x9).
-        self.P = np.array([[1000,0,0,0,0,0,0,0,0],
-                        [0,1000,0,0,0,0,0,0,0],
-                        [0,0,1000,0,0,0,0,0,0],
-                        [0,0,0,1000,0,0,0,0,0],
-                        [0,0,0,0,1000,0,0,0,0],
-                        [0,0,0,0,0,1000,0,0,0],
-                        [0,0,0,0,0,0,1000,0,0],
-                        [0,0,0,0,0,0,0,1000,0],
-                        [0,0,0,0,0,0,0,0,1000]])
+        self.P = 1000 * np.identity(9)
 
         # The external motion (9x1).
-        self.u = np.array([[0],
-                    [0],
-                    [0],
-                    [0],
-                    [0],
-                    [0],
-                    [0],
-                    [0],
-                    [0]])
+        self.u = np.zeros((9,1))
 
         # The transition matrix (9x9). 
-        self.F = np.array([[1,0,0,1,0,0,0.5,0,0],
-                            [0,1,0,0,1,0,0,0.5,0],
-                            [0,0,1,0,0,1,0,0,0.5],
-                            [0,0,0,1,0,0,1,0,0],
-                            [0,0,0,0,1,0,0,1,0],
-                            [0,0,0,0,0,1,0,0,1],
-                            [0,0,0,0,0,0,1,0,0],
-                            [0,0,0,0,0,0,0,1,0],
-                            [0,0,0,0,0,0,0,0,1]])
+        self.F = np.array([[1.0, 0.0, 0.0, self.dt, 0.0,      0.0,              1/2.0*self.dt**2, 0.0,              0.0],
+                           [0.0, 1.0, 0.0, 0.0,     self.dt,  0.0,              0.0,              1/2.0*self.dt**2, 0.0],
+                           [0.0, 0.0, 1.0, 0.0,     0.0,      self.dt,          0.0,              0.0,              1/2.0*self.dt**2],
+                           [0.0, 0.0, 0.0, 1.0,     0.0,      0.0,              self.dt,          0.0,              0.0],
+                           [0.0, 0.0, 0.0, 0.0,     1.0,      0.0,              0.0,              self.dt,          0.0],
+                           [0.0, 0.0, 0.0, 0.0,     0.0,      1.0,              0.0,              0.0,              self.dt],
+                           [0.0, 0.0, 0.0, 0.0,     0.0,      0.0,              1.0,              0.0,              0.0],
+                           [0.0, 0.0, 0.0, 0.0,     0.0,      0.0,              0.0,              1.0,              0.0],
+                           [0.0, 0.0, 0.0, 0.0,     0.0,      0.0,              0.0,              0.0,              1.0]])
 
         # The observation matrix (3x9).
         self.H = np.array([[1,0,0,0,0,0,0,0,0],
@@ -57,17 +60,27 @@ class KalmanFilter:
 
         self.I = np.identity(9)
 
+
     def update(self, Z):
-        y = Z - np.dot(self.H, self.x)
-        S = np.dot(np.dot(self.H, self.P), np.transpose(self.H)) + self.R
-        K = np.dot(np.dot(self.P, np.transpose(self.H)), np.linalg.pinv(S))
-        self.x = self.x + np.dot(K, y)
-        self.P = np.dot(self.I - np.dot(K, self.H), self.P)
+        y = Z - self.H @ self.x
+        S = self.H @ self.P @ self.H.T + self.R
+        K = (self.P @ self.H.T) @ np.linalg.pinv(S)
+        self.x = self.x + K @ y
+        self.P = (self.I -  (K @ self.H)) @ self.P
+        assert self.x.shape == (9,1)
         # return self.x, self.P
 
+    # def update(self, Z):
+    #     y = Z - np.dot(self.H, self.x)
+    #     S = np.dot(np.dot(self.H, self.P), np.transpose(self.H)) + self.R
+    #     K = np.dot(np.dot(self.P, np.transpose(self.H)), np.linalg.pinv(S))
+    #     self.x = self.x + np.dot(K, y)
+    #     self.P = np.dot(self.I - np.dot(K, self.H), self.P)
+    #     # return self.x, self.P
+
     def predict(self):
-        self.x = np.dot(self.F,self.x) + self.u
-        self.P = np.dot(np.dot(self.F, self.P), np.transpose(self.F))
+        self.x = self.F @ self.x + self.u
+        self.P = self.F @ self.P @ self.F.T
         # return self.x, self.P
     
 
