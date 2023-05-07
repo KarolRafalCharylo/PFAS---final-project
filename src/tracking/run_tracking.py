@@ -69,12 +69,11 @@ def run_tracking(seq: Path):
         "position_x",
         "position_y",
         "position_z",
-        "prediction_x",
-        "prediction_y",
-        "prediction_z",
         "last_seen",
         "bbox_cx",
         "bbox_cy",
+        "pred_bbox_cx",
+        "pred_bbox_cy",
         "bbox_w",
         "bbox_h",
     ]
@@ -153,12 +152,11 @@ def run_tracking(seq: Path):
                         x,
                         y,
                         z,
-                        0,
-                        0,
-                        0,
                         frame,
                         box_left["xcenter"],
                         box_left["ycenter"],
+                        0,
+                        0,
                         box_left["width"],
                         box_right["height"],
                     ]
@@ -262,17 +260,17 @@ def run_tracking(seq: Path):
             prediction = kalman_filter.predict(cx, cy)
 
             # Add predicted position to the dataframe
-            pred_x = prediction[0, 0]
-            pred_y = prediction[1, 0]
+            pred_cx = prediction[0, 0]
+            pred_cy = prediction[1, 0]
             # pred_z = kf_dict[object_id].x[2][0]
             objects_df.loc[
                 (objects_df["object_id"] == object_id) & (objects_df["frame"] == frame),
-                "prediction_x",
-            ] = pred_x
+                "pred_bbox_cx",
+            ] = pred_cx
             objects_df.loc[
                 (objects_df["object_id"] == object_id) & (objects_df["frame"] == frame),
-                "prediction_y",
-            ] = pred_y
+                "pred_bbox_cy",
+            ] = pred_cy
             # objects_df.loc[(objects_df["object_id"] == object_id) & (objects_df["frame"] == frame), "prediction_z"] = pred_z
 
         # For non-observed objects,
@@ -297,21 +295,21 @@ def run_tracking(seq: Path):
             # est_z = kalman_filter.x[2][0]
             # x_measured = np.array([[est_x],[est_y],[est_z]])
             # kalman_filter.update(x_measured)
-            est_x = df_previous_frame.loc[
-                df_previous_frame["object_id"] == object_id, "prediction_x"
+            est_cx = df_previous_frame.loc[
+                df_previous_frame["object_id"] == object_id, "pred_bbox_cx"
             ].values[0]
-            est_y = df_previous_frame.loc[
-                df_previous_frame["object_id"] == object_id, "prediction_y"
+            est_cy = df_previous_frame.loc[
+                df_previous_frame["object_id"] == object_id, "pred_bbox_cy"
             ].values[0]
 
-            prediction = kalman_filter.predict(est_x, est_y)
+            prediction = kalman_filter.predict(est_cx, est_cy)
             # kalman_filter.predict()
 
             # bbox_cx, bbox_cy = project_3d_to_2d_left([est_x, est_y, est_z])
 
             # predicted position
-            pred_x = prediction[0, 0]
-            pred_y = prediction[1, 0]
+            pred_cx = prediction[0, 0]
+            pred_cy = prediction[1, 0]
             # pred_z = kf_dict[object_id].x[2][0]
 
             # Get object type, last seen, bbox width and bbox height from last frame it was observed
@@ -337,12 +335,11 @@ def run_tracking(seq: Path):
                 0,
                 0,
                 0,
-                pred_x,
-                pred_y,
-                0,
                 last_seen,
-                est_x,
-                est_y,
+                est_cx,
+                est_cy,
+                pred_cx,
+                pred_cy,
                 bbox_w,
                 bbox_h,
             ]
