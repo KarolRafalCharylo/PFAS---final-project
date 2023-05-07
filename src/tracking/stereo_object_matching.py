@@ -52,7 +52,7 @@ def match_objects(
                 for m in matches:
                     match_matrix[idx_left, idx_right] += m.distance
             else:
-                match_matrix[idx_left, idx_right] = np.inf
+                match_matrix[idx_left, idx_right] = 1e12
 
     row_ind, col_ind = scipy.optimize.linear_sum_assignment(match_matrix)
 
